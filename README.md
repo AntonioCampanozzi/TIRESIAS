@@ -1,2 +1,1 @@
-# TIRESIAS
-TIRESIAS: TImely REsistance forecaSting on addItive mAnufacturIng Samples 
+# TIRESIAS: **TI**mely **RE**sistance **S**urmise **I**n **A**dditive manufacturing **S**amples 
