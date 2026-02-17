@@ -179,20 +179,25 @@ def predict_prefix(model, test_loader, scaler_y, device, curve_idx):
             
             pred_error = ((abs(preds_real - truths_real) / truths_real) * 100).mean()
             earliness_metrics.append(pred_error)
-        earliness_metrics = pd.Series(earliness_metrics).rolling(window=20, min_periods=1).mean()
+        earliness_metrics_mean = pd.Series(earliness_metrics).rolling(window=20, min_periods=1).mean()
+        earliness_metrics_median = pd.Series(earliness_metrics).rolling(window=20, min_periods=1).median()
         plt.plot(range(1, len(earliness_metrics) + 1), earliness_metrics, label='Earliness (smoothed)')
         plt.xlabel('Prefix Index')
         plt.ylabel('APE (%)')
         plt.title('Earliness Plot')
-        point=find_early_stopping_point(earliness_metrics, tau=0.9)
-        plt.axvline(x=point, color='r', linestyle='--', label=f'Early Stopping Point: {point}')
+        point_mean=find_early_stopping_point(earliness_metrics_mean, tau=0.9)
+        point_median=find_early_stopping_point(earliness_metrics_median, tau=0.9)
+        plt.axvline(x=point_mean, color='r', linestyle='--', label=f'Early Stopping Point Mean: {point_mean}')
         plt.legend()
         dir = os.path.join(RESULTS_DIR, 'earliness_curves_LSTM')
         os.makedirs(dir, exist_ok=True)
         plt.savefig(os.path.join(dir, f"earliness_curve_{curve_idx}.png"))
         plt.close()
-        earliness=(point+1)/len(earliness_metrics) * 100
-        print(f"Earliness: {earliness:.2f}%")
+        earliness_mean=(point_mean+1)/len(earliness_metrics) * 100
+        earliness_median=(point_median+1)/len(earliness_metrics) * 100
+        print(f"Earliness Mean: {earliness_mean:.2f}%")
+        print(f"Earliness Median: {earliness_median:.2f}%")
+
     
 if __name__ == "__main__":
     print(DEVICE)
@@ -215,15 +220,17 @@ if __name__ == "__main__":
     model_1 = EarlyPredLSTM(input_size=2, hidden_size=128).to(DEVICE)
     model_2 = EarlyPredLSTM(input_size=2, hidden_size=128).to(DEVICE)
     model_3 = EarlyPredLSTM(input_size=2, hidden_size=128).to(DEVICE)
+    model_full = EarlyPredLSTM(input_size=2, hidden_size=128).to(DEVICE)
    
     
     train_loader_1, val_loader_1, test_loader_1, y_scaler_1 = prepare_training(dataset_1, label_col='static:Bending strength')
     train_loader_2, val_loader_2, test_loader_2, y_scaler_2 = prepare_training(dataset_2, label_col='static:Bending strength')
     train_loader_3, val_loader_3, test_loader_3, y_scaler_3 = prepare_training(dataset_3, label_col='static:Bending strength')
+    train_loader_full, val_loader_full, test_loader_full, y_scaler_full = prepare_training(dataframes_bending, label_col='static:Bending strength')
     
-    models_list = [model_0, model_1, model_2, model_3]
+    models_list = [model_0, model_1, model_2, model_3, model_full]
     loaders = [(train_loader, val_loader), (train_loader_1, val_loader_1), 
-           (train_loader_2, val_loader_2), (train_loader_3, val_loader_3)]
+           (train_loader_2, val_loader_2), (train_loader_3, val_loader_3), (train_loader_full, val_loader_full)]
 
     for i, model in enumerate(models_list):
         path = os.path.join(MODEL_DIR, f"best_model_cluster_{i}_Bending.pth")
@@ -247,11 +254,12 @@ if __name__ == "__main__":
     test_model(model_1, test_loader_1, nn.HuberLoss(delta=1.0))
     test_model(model_2, test_loader_2, nn.HuberLoss(delta=1.0))
     test_model(model_3, test_loader_3, nn.HuberLoss(delta=1.0))
-    
+    test_model(model_full, test_loader_full, nn.HuberLoss(delta=1.0))
     predict_prefix(model_0, test_loader, y_scaler, DEVICE, 0)
     predict_prefix(model_1, test_loader_1, y_scaler_1, DEVICE, 1)
     predict_prefix(model_2, test_loader_2, y_scaler_2, DEVICE, 2)
     predict_prefix(model_3, test_loader_3, y_scaler_3, DEVICE, 3)
+    predict_prefix(model_full, test_loader_full, y_scaler_full, DEVICE, 999)
     
     dataframes_compression = parse_data('Compression', sep=';', features_mapping=FEATURES_MAPPING_COMPRESSION, label_col='static:Compressive stress at maximum strain')
     dataframes_compression = [df[['static:Sample name', 'Compression(%)', 'Deflection at standard load(%)', 'Force applied (N)', 'static:Compressive stress at maximum strain']] for df in dataframes_compression]
@@ -270,13 +278,16 @@ if __name__ == "__main__":
     model_0 = EarlyPredLSTM(input_size=3, hidden_size=128).to(DEVICE)
     model_1 = EarlyPredLSTM(input_size=3, hidden_size=128).to(DEVICE)
     model_2 = EarlyPredLSTM(input_size=3, hidden_size=128).to(DEVICE)
+    model_full = EarlyPredLSTM(input_size=3, hidden_size=128).to(DEVICE)
     
     train_loader, val_loader, test_loader, y_scaler = prepare_training(dataset_0, label_col='static:Compressive stress at maximum strain')
     train_loader_1, val_loader_1, test_loader_1, y_scaler_1 = prepare_training(dataset_1, label_col='static:Compressive stress at maximum strain')
     train_loader_2, val_loader_2, test_loader_2, y_scaler_2 = prepare_training(dataset_2, label_col='static:Compressive stress at maximum strain')
-    models_list = [model_0, model_1, model_2]
+    train_loader_full, val_loader_full, test_loader_full, y_scaler_full = prepare_training(dataframes_compression, label_col='static:Compressive stress at maximum strain')
+    models_list = [model_0, model_1, model_2, model_full]
+    
     loaders = [(train_loader, val_loader), (train_loader_1, val_loader_1), 
-           (train_loader_2, val_loader_2)]
+           (train_loader_2, val_loader_2), (train_loader_full, val_loader_full)]
 
     for i, model in enumerate(models_list):
         path = os.path.join(MODEL_DIR, f"best_model_cluster_{i}_Compression.pth")
@@ -299,7 +310,8 @@ if __name__ == "__main__":
     test_model(model_0, test_loader, nn.HuberLoss(delta=1.0))
     test_model(model_1, test_loader_1, nn.HuberLoss(delta=1.0))
     test_model(model_2, test_loader_2, nn.HuberLoss(delta=1.0))
-    
+    test_model(model_full, test_loader_full, nn.HuberLoss(delta=1.0))
     predict_prefix(model_0, test_loader, y_scaler, DEVICE, 0)
     predict_prefix(model_1, test_loader_1, y_scaler_1, DEVICE, 1)
     predict_prefix(model_2, test_loader_2, y_scaler_2, DEVICE, 2)
+    predict_prefix(model_full, test_loader_full, y_scaler_full, DEVICE, 999)
