@@ -95,7 +95,7 @@ def train_and_avaluate(dataset, cluster_id, stride, label_col, type: Literal['Be
     model = XGBRegressor(
         n_estimators=1000,
         learning_rate=0.05,
-        max_depth=5,
+        max_depth=10,
         subsample=0.8,
         colsample_bytree=0.8,
         early_stopping_rounds=50,
@@ -107,6 +107,8 @@ def train_and_avaluate(dataset, cluster_id, stride, label_col, type: Literal['Be
         eval_set=[(X_val, y_val)],
         verbose=False 
     )
+    
+    test_model(model, dataset_test)
     
     groups = X_test.groupby('ID')
 
@@ -127,6 +129,15 @@ def train_and_avaluate(dataset, cluster_id, stride, label_col, type: Literal['Be
     print(f"Std Earliness on cluster {cluster_id}: {std_earliness:.2f}%")
     
     return avg_earliness
+
+def test_model(model, test_set):
+    X_test = test_set.drop(columns=['ID', 'label'])
+    y_test = test_set['label']
+    preds = model.predict(X_test)
+    mae = mean_absolute_error(y_test, preds)
+    r2 = r2_score(y_test, preds)
+    print(f"Test MAE: {mae:.4f}")
+    print(f"Test R^2: {r2:.4f}")
 
 if __name__ == "__main__":
     

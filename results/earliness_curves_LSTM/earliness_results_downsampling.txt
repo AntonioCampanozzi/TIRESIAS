@@ -1,0 +1,25 @@
+Earliness: 68.63%
+Earliness: 72.22%
+Earliness: 83.61%
+Earliness: 54.35%
+
+Test Loss: 0.4537
+Test Loss: 0.8666
+Test Loss: 0.0577
+Test Loss: 0.1838
+
+
+
+
+
+-------------------------------------------
+
+
+Test Loss: 0.0834
+Test Loss: 0.6955
+Test Loss: 0.0518
+Test Loss: 0.2296
+Earliness: 47.06%
+Earliness: 50.00%
+Earliness: 75.41%
+Earliness: 93.48%
