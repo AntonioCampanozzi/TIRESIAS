@@ -5,7 +5,7 @@ from src.model.LstmDataset import LstmDataset, EarlyPredLSTM # Importi le tue cl
 import torch
 from torch.utils.data import DataLoader
 from src.data_analysis.data_parsing import parse_data
-from src.utils import FEATURES_MAPPING_BENDING, MODEL_DIR, RESULTS_DIR, FEATURES_MAPPING_COMPRESSION
+from src.utils import FEATURES_MAPPING_BENDING, MODEL_DIR, RESULTS_DIR, FEATURES_MAPPING_COMPRESSION, open_clusters_mapping
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -204,12 +204,7 @@ if __name__ == "__main__":
     dataframes_bending = parse_data('Bending', sep='\t', features_mapping=FEATURES_MAPPING_BENDING, label_col='static:Bending strength')
     dataframes_bending = [df[['static:Sample name', 'Deformation(mm)', 'Force applied (N)', 'static:Bending strength']] for df in dataframes_bending]
     clustering_results_bending = os.path.join(RESULTS_DIR, 'cluster_mapping_Bending.json')
-    try:
-        with open(clustering_results_bending, 'r') as f:
-            cluster_mapping = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: {clustering_results_bending} not found. Please run the clustering step first.")
-        exit(1)
+
     dataset_0 = [df for df in dataframes_bending if df['static:Sample name'].iloc[0] in cluster_mapping['0']]
     dataset_1 = [df for df in dataframes_bending if df['static:Sample name'].iloc[0] in cluster_mapping['1']]
     dataset_2 = [df for df in dataframes_bending if df['static:Sample name'].iloc[0] in cluster_mapping['2']]
@@ -264,12 +259,8 @@ if __name__ == "__main__":
     dataframes_compression = parse_data('Compression', sep=';', features_mapping=FEATURES_MAPPING_COMPRESSION, label_col='static:Compressive stress at maximum strain')
     dataframes_compression = [df[['static:Sample name', 'Compression(%)', 'Deflection at standard load(%)', 'Force applied (N)', 'static:Compressive stress at maximum strain']] for df in dataframes_compression]
     clustering_results_compression = os.path.join(RESULTS_DIR, 'cluster_mapping_Compression.json')
-    try:
-        with open(clustering_results_compression, 'r') as f:
-            cluster_mapping = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: {clustering_results_compression} not found. Please run the clustering step first.")
-        exit(1)
+    
+    cluster_mapping=open_clusters_mapping('Compression')
     
     dataset_0 = [df for df in dataframes_compression if df['static:Sample name'].iloc[0] in cluster_mapping['0']]
     dataset_1 = [df for df in dataframes_compression if df['static:Sample name'].iloc[0] in cluster_mapping['1']]

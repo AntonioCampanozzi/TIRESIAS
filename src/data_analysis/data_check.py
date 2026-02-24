@@ -1,7 +1,7 @@
 from typing import Literal
 from tqdm import tqdm
 from src.data_analysis.data_parsing import parse_data
-from src.utils import RAW_DATA_DIR, INTERIM_DATA_DIR, EXPLORATIVE_ANALYSIS_DIR, FEATURES_MAPPING_BENDING, FEATURES_MAPPING_COMPRESSION
+from src.utils import RAW_DATA_DIR, INTERIM_DATA_DIR, EXPLORATIVE_ANALYSIS_DIR, FEATURES_MAPPING_BENDING, FEATURES_MAPPING_COMPRESSION, RESULTS_DIR, get_medoids_from_mapping, open_clusters_mapping
 import os
 import numpy as np
 import pandas as pd
@@ -153,7 +153,10 @@ def force_deformation_curve(datasets, in_material, in_thickness, condition, type
             f"1_Force-Deformation Curve for {in_material} Material"],
         2: [lambda d: (d['static:Material Thickness (mm)'].iloc[0] == in_thickness) and (d['static:Material'].iloc[0] == in_material),
             lambda d: f"{d['static:Material'].iloc[0]}-({d['static:Material Thickness (mm)'].iloc[0]}mm)",
-            f"2_Force-Deformation Curve for {in_material} {in_thickness}mm"]
+            f"2_Force-Deformation Curve for {in_material} {in_thickness}mm"],
+        3: [lambda d: True,
+            lambda d: f"{d['static:Material'].iloc[0]}-({d['static:Material Thickness (mm)'].iloc[0]}mm)",
+            f"3_Force-Deformation Curve for All Experiments"]        
     }
     filtered_dfs = [df for df in datasets if CONDITIONS[condition][0](df)]
     
@@ -190,7 +193,26 @@ def force_deformation_curve(datasets, in_material, in_thickness, condition, type
     plt.savefig(os.path.join(dir, f"{CONDITIONS[condition][2]}.png")) # Salva il file nella cartella corrente
     plt.close()
 
-if __name__ == "__main__":
+def plot_force_series(dataframes, cluster_idx, type: Literal['Bending', 'Compression'], is_medoid=False):
+    plt.figure(figsize=(12, 8))
+    for df in dataframes:
+        plt.plot(df['Time(s)'], df['Force applied (N)'], alpha=0.5)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Force applied (N)")
+    if is_medoid:
+        plt.title(f"Medoid Force-Time Curve for {type} Data (Cluster {cluster_idx})")
+    else:
+        plt.title(f"Force-Time Curves for {type} Data (Cluster {cluster_idx})")
+    plt.grid(True, linestyle='--', alpha=0.6)
+    dir = os.path.join(EXPLORATIVE_ANALYSIS_DIR, f'force_time_curves_{type.lower()}')
+    os.makedirs(dir, exist_ok=True)
+    if is_medoid:
+        plt.savefig(os.path.join(dir, f"medoid_{cluster_idx}_force_time_curve.png"))
+    else:
+        plt.savefig(os.path.join(dir, f"force_time_curves_cluster_{cluster_idx}.png")) # Salva il file nella cartella corrente
+    plt.close()
+
+def data_exploration_iteration_1():
     dataframes_bending=parse_data('Bending', FEATURES_MAPPING_BENDING, sep='\t', label_col='static:Bending strength')
 
     
@@ -262,5 +284,38 @@ if __name__ == "__main__":
     force_deformation_curve(dataframes_compression, in_material='PETG', in_thickness=None, condition=1, type='Compression')
     force_deformation_curve(dataframes_compression, in_material='PLA', in_thickness=None, condition=1, type='Compression')
 
+def data_exploration_iteration_3():
+        dataframes_bending=parse_data('Bending', FEATURES_MAPPING_BENDING, sep='\t', label_col='static:Bending strength')
+        dataframes_compression=parse_data('Compression', FEATURES_MAPPING_COMPRESSION, sep=';', label_col='static:Compressive stress at maximum strain')
+
+        cluster_mapping_bending = open_clusters_mapping('Bending')
+        cluster_mapping_compression = open_clusters_mapping('Compression')
+        
+        for key in cluster_mapping_bending.keys():
+            group = [df for df in dataframes_bending  if df['static:Sample name'].iloc[0] in cluster_mapping_bending[key]]
+            plot_force_series(group, int(key), type='Bending')
     
+        for key in cluster_mapping_compression.keys():
+            group = [df for df in dataframes_compression  if df['static:Sample name'].iloc[0] in cluster_mapping_compression[key]]
+            plot_force_series(group, int(key), type='Compression')
+        
+        medoids_indices_bending = get_medoids_from_mapping('Bending')
+        medoids_indices_compression = get_medoids_from_mapping('Compression')
+        print(f"Medoids indices for Bending: {medoids_indices_bending}")
+        print(f"Medoids indices for Compression: {medoids_indices_compression}")
+        
+        for idx, cluster_idx in zip(medoids_indices_bending, cluster_mapping_bending.keys()):
+            medoid_df = dataframes_bending[idx]
+            plot_force_series([medoid_df], int(cluster_idx), type='Bending', is_medoid=True)
+            
+        for idx, cluster_idx in zip(medoids_indices_compression, cluster_mapping_compression.keys()):
+            medoid_df = dataframes_compression[idx]
+            plot_force_series([medoid_df], int(cluster_idx), type='Compression', is_medoid=True)
+            
+        
+if __name__ == "__main__":
+    #data_exploration_iteration_1()
     
+    #no data exploration at iteration 2 as it is the same as iteration 1
+    
+    data_exploration_iteration_3()
