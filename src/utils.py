@@ -1,4 +1,8 @@
+import json
 import os
+from typing_extensions import Literal
+import pickle
+import numpy as np
 
 PROJECT_ROOT = os.getcwd()
 DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
@@ -41,3 +45,31 @@ FEATURES_MAPPING_COMPRESSION={
     'Nominelle Stauchung': 'Deformation(mm)',#compression of the sample with respect to its original length
     'Standardkraft':'Force applied (N)'
 }
+
+def open_clusters_mapping(type: Literal['Bending', 'Compression']):
+    try:
+        with open(os.path.join(RESULTS_DIR, f'cluster_mapping_{type}.json'), 'r') as f:
+            clusters_dict = json.load(f)
+            return clusters_dict
+    except FileNotFoundError:
+        print(f"Error: cluster_mapping_{type}.json not found in {RESULTS_DIR}")
+        exit(1)
+        
+def get_medoids_from_mapping(type: Literal['Bending', 'Compression']):
+    try:
+        with open(os.path.join(RESULTS_DIR, f'medoids_{type}.pkl'), 'rb') as f:
+            medoids = pickle.load(f)
+            return medoids
+    except FileNotFoundError:
+        print(f"Error: medoids_{type}.pkl not found in {RESULTS_DIR}")
+        exit(1)
+        
+def import_distance_matrix(type: Literal['Bending', 'Compression']):
+    try:
+        print('...loading distance matrix...')
+        dist_matrix = np.load(os.path.join(RESULTS_DIR, f"dtw_distance_matrix_{type}.npy"))
+        return dist_matrix
+    except FileNotFoundError:
+        print(f"Error: dtw_distance_matrix_{type}.npy not found in {RESULTS_DIR}")
+        return None
+            

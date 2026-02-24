@@ -8,9 +8,11 @@ from sklearn_extra.cluster import KMedoids
 from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 import os
-from src.utils import FEATURES_MAPPING_BENDING, FEATURES_MAPPING_COMPRESSION, RESULTS_DIR
+from src.utils import FEATURES_MAPPING_BENDING, FEATURES_MAPPING_COMPRESSION, RESULTS_DIR, import_distance_matrix
 from kneed import KneeLocator
 from typing import Literal
+import pickle
+from scipy.signal import find_peaks
 
 # 1. Funzione per scalare i dati
 def scale_data(X):
@@ -50,19 +52,7 @@ def find_optimal_k_elbow(dist_matrix, max_k=10):
         km.fit(dist_matrix)
         # inertia_ in KMedoids è la somma delle distanze dei campioni dal loro medoide
         inertias.append(km.inertia_)
-        print(f"K={k}, Total Inertia={km.inertia_:.4f}")
     
-    # Grafico dell'Elbow
-    plt.figure(figsize=(8, 5))
-    plt.plot(k_range, inertias, 'ro-')
-    plt.xlabel('Number of Clusters (K)')
-    plt.ylabel('Inertia (Sum of distances)')
-    plt.title('Elbow Method for Optimal K')
-    plt.grid(True)
-    plt.show()
-    
-    # Nota: L'elbow va interpretato visivamente. 
-    # Spesso è il punto dove la discesa smette di essere ripida.
     return inertias
 
 # 4. Funzione per raggruppare e conservare i risultati
@@ -80,6 +70,51 @@ def organize_cluster_results(X_original, labels, sample_names, type: Literal['Be
             json.dump(clusters_dict, f, indent=4)
     return clusters_dict
 
+def clusterize(dist_matrix, max_k, type: Literal['Bending', 'Compression']):
+    intertias = find_optimal_k_elbow(dist_matrix, max_k=max_k)
+    
+    best_k=KneeLocator(range(1, max_k + 1), intertias, curve='convex', direction='decreasing').elbow
+    print(f"Optimal K found: {best_k}")
+    
+    model = KMedoids(n_clusters=best_k, metric="precomputed", random_state=42, method='pam')
+    
+    print("Clustering with KMedoids...")
+    
+    final_labels = model.fit_predict(dist_matrix)
+    
+    print("Clustering completed. Saiving medoids indices...")
+    
+    medoids_indices = model.medoid_indices_
+    
+    pickle.dump(medoids_indices, open(os.path.join(RESULTS_DIR, f'medoids_{type}.pkl'), 'wb'))
+    
+    print("Saving results...")
+    
+    results = organize_cluster_results(X_bending, final_labels, names_list, type=type)
+    
+    
+
+def get_thresholds(medoid_indices, dataframes, type: Literal['Bending', 'Compression']):
+    thresholds=[]
+    for i in medoid_indices:
+        df = dataframes[i]
+        force_series = df['Force applied (N)'].values
+            #the curve analysis on bending confirmed that the point of breakeage si most likely on the peak pof the curve
+        if type == 'Compression':
+            #For compression, we have two peaks, we consider the first one as the point of breakage
+            peaks, _ = find_peaks(force_series, prominence=5000)
+            
+            if len(peaks) > 0:
+                peak_force_point = peaks[0]
+            else:
+                peak_force_point = np.argmax(force_series)
+        else:
+            peak_force_point= np.argmax(force_series)
+            
+        threshold=peak_force_point/len(force_series)
+        print(f"Medoid index: {i}, Threshold: {threshold:.2f}")    
+        thresholds.append(threshold)
+    print(f"Mean threshold: {np.mean(thresholds):.2f},\nStd threshold: {np.std(thresholds):.2f},\nMedian threshold: {np.median(thresholds):.2f}")
 
 if __name__ == "__main__":
     
@@ -92,32 +127,17 @@ if __name__ == "__main__":
     
     names_list = [df['static:Sample name'].iloc[0] for df in dataframes_bending]
 
-    # 1. Scaling data
     X_scaled = scale_data(X_bending)
-
-    # 2. Computing DTW distance matrix
     
-    if os.path.exists(os.path.join(RESULTS_DIR, f"dtw_distance_matrix_Bending.npy")):
-        print("Loading precomputed distance matrix...")
-        dist_matrix = np.load(os.path.join(RESULTS_DIR, f"dtw_distance_matrix_Bending.npy"))
+    dist_matrix = import_distance_matrix('Bending')
     
-    else:
+    if dist_matrix is None:
         dist_matrix = compute_distance_matrix(X_scaled, type='Bending')
-
-    # 3. Find optimal K using Elbow method
-    intertias = find_optimal_k_elbow(dist_matrix, max_k=10) #best k=2
-
     
-    best_k=KneeLocator(range(1, 11), intertias, curve='convex', direction='decreasing').elbow
-    print(f"Optimal K found: {best_k}")
+    clusterize(dist_matrix, max_k=10, type='Bending')
     
-    # 4. Final clustering with the best K
-    model = KMedoids(n_clusters=best_k, metric="precomputed", random_state=42, method='pam')
-    final_labels = model.fit_predict(dist_matrix)
-
-    # 5. Save results
-    results = organize_cluster_results(X_bending, final_labels, names_list, type='Bending')
-
+    get_thresholds(pickle.load(open(os.path.join(RESULTS_DIR, f'medoids_Bending.pkl'), 'rb')), dataframes_bending, type='Bending')
+    
     # -------------------COMPRESSION DATA--------------------
     dataframes_compression=data_parsing.parse_data('Compression', sep=';', features_mapping=FEATURES_MAPPING_COMPRESSION, label_col='static:Compressive stress at maximum strain')
     
@@ -127,31 +147,18 @@ if __name__ == "__main__":
     
     names_list = [df['static:Sample name'].iloc[0] for df in dataframes_compression]
 
-    # 1. Scaling data
     X_scaled = scale_data(X_compression)
 
     # 2. Computing DTW distance matrix
     
-    if os.path.exists(os.path.join(RESULTS_DIR, f"dtw_distance_matrix_Compression.npy")):
-        print("Loading precomputed distance matrix...")
-        dist_matrix = np.load(os.path.join(RESULTS_DIR, f"dtw_distance_matrix_Compression.npy"))
+    dist_matrix = import_distance_matrix('Compression')
     
-    else:
+    if dist_matrix is None:
         resampler = TimeSeriesResampler(sz=4000) 
         X_resampled = resampler.fit_transform(X_scaled)
         print(X_resampled.shape)
         dist_matrix = compute_distance_matrix(X_resampled, type='Compression')
 
-    # 3. Find optimal K using Elbow method
-    intertias = find_optimal_k_elbow(dist_matrix, max_k=10) #best k=2
-
+    clusterize(dist_matrix, max_k=10, type='Compression')
     
-    best_k=KneeLocator(range(1, 11), intertias, curve='convex', direction='decreasing').elbow
-    print(f"Optimal K found: {best_k}")
-    
-    # 4. Final clustering with the best K
-    model = KMedoids(n_clusters=best_k, metric="precomputed", random_state=42, method='pam')
-    final_labels = model.fit_predict(dist_matrix)
-
-    # 5. Save results
-    results = organize_cluster_results(X_compression, final_labels, names_list, type='Compression')
+    get_thresholds(pickle.load(open(os.path.join(RESULTS_DIR, f'medoids_Compression.pkl'), 'rb')), dataframes_compression, type='Compression')
